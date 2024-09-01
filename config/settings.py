@@ -14,6 +14,7 @@ from pathlib import Path
 import environ
 import logging
 import logging.config
+from datetime import timedelta
 
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -65,7 +66,21 @@ LOCAL_APPS = [
 
 THIRD_PARTY_APPS = [
     'rest_framework',
+    'corsheaders',
+    'knox'
 ]
+
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'knox.auth.TokenAuthentication',
+    ],
+}
+
+# KNOX Settings
+REST_KNOX = {
+    "TOKEN_TTL": timedelta(hours=10),
+    "AUTO_REFRESH": False,
+}
 
 
 INSTALLED_APPS = DJANGO_APPS + LOCAL_APPS + THIRD_PARTY_APPS
@@ -80,6 +95,7 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'config.middlewares.RoleBasedAccessMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
 
 ]
 

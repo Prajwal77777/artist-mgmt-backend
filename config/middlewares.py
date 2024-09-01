@@ -20,10 +20,13 @@ class RoleBasedAccessMiddleware:
         if request.path == '/auth/user/logout/' and request.method == 'POST':
             response = self.get_response(request)
             return response
+        if request.path == '/auth/user/get_users/' and request.method == 'GET':
+            response = self.get_response(request)
+            return response
 
         # Check for permissions based on path and role
-        if request.path.startswith('/auth/user') and user_role != 'super_admin':
-            return JsonResponse({'error': 'Permission Denied'}, status=403)
+        # if request.path.startswith('/auth/user') and user_role != 'super_admin':
+        #     return JsonResponse({'error': 'Permission Denied'}, status=403)
 
         if request.path.startswith('/admin/artist') and user_role not in ['super_admin', 'artist_manager']:
             return JsonResponse({'error': 'Permission Denied'}, status=403)

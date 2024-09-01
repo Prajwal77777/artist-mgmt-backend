@@ -1,25 +1,29 @@
-import uuid
+from datetime import datetime, timedelta
+
+import jwt
+from django.conf import settings
 import json
 from django.views.decorators.csrf import csrf_exempt
-from django.http import JsonResponse
 from django.contrib.auth.hashers import check_password, make_password
 from django.contrib.auth import authenticate, login, logout
 from django.utils import timezone
 from apps.core.models import User
 from django.db import connection
+from knox.models import AuthToken
 from rest_framework import status
+from rest_framework.decorators import api_view
 from rest_framework.request import Request
 from rest_framework.response import Response
+from apps.core.validations import email_validation
 
 
-@csrf_exempt
+@api_view(['POST'])
 def user_register(request: Request):
     """Register a new user."""
 
     if request.method == 'POST':
         try:
             data = request.data
-            id = str(uuid.uuid4())
             first_name = data.get("first_name")
             last_name = data.get('last_name')
             email = data.get('email')
@@ -30,14 +34,16 @@ def user_register(request: Request):
             role = data.get('role')
 
             hashed_password = make_password(password)
+            if not email_validation(email):
+                return Response({'error': 'Invalid email address'}, status=status.HTTP_400_BAD_REQUEST)
 
-            if not all([first_name, last_name, email, phone, gender]):
+            if not all([first_name, last_name, email, phone, gender, role]):
                 return Response({'error': 'All fields are required'}, status=status.HTTP_400_BAD_REQUEST)
 
             with connection.cursor() as cursor:
                 cursor.execute(
-                    "INSERT INTO users (id, first_name, last_name, email, password, phone, dob, gender, role, created_at, updated_at) VALUES (%s,%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
-                    [id, first_name, last_name, email, hashed_password, phone, dob,
+                    "INSERT INTO users (first_name, last_name, email, password, phone, dob, gender, role, created_at, updated_at) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                    [first_name, last_name, email, hashed_password, phone, dob,
                         gender, role, timezone.now(), timezone.now()]
                 )
 
@@ -48,4 +54,97 @@ def user_register(request: Request):
                 {"message": "Invalid JSON in request body"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+    return Response({"message": "Invalid request method"}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+
+
+@api_view(['GET'])
+def get_users(request: Request):
+    """Get all users."""
+
+    if request.method == 'GET':
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT * FROM users")
+            columns = [col[0] for col in cursor.description]
+            users = cursor.fetchall()
+        result = [dict(zip(columns, row)) for row in users]
+        return Response({"data": result}, status=status.HTTP_200_OK)
+    return Response({"message": "Invalid request method"}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+
+
+@api_view(['GET'])
+def get_user(request: Request, id: str):
+    """GET a Specific User"""
+    if request.method == 'GET':
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT * FROM users WHERE id = %s;", [id])
+            columns = [col[0] for col in cursor.description]
+            user = cursor.fetchall()
+
+        result = [dict(zip(columns, row)) for row in user]
+        return Response({"data": result}, status=status.HTTP_200_OK)
+    return Response({"message": "Invalid request method"}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+
+
+@api_view(['POST'])
+def login_user(request: Request):
+    """Login a user."""
+    if request.method == 'POST':
+        data = request.data
+        email = data.get("email")
+        password = data.get("password")
+
+        # Validate input data
+        if not email or not password:
+            return Response({"message": "Email and password are required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Check email validity
+        if not email_validation(email):
+            return Response({"message": "Invalid email format."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT id, password, role FROM users WHERE email = %s", [
+                        email]
+                )
+                user_data = cursor.fetchone()
+                print(user_data)
+            if user_data is None:
+                return Response({"message": "Invalid credentials."}, status=status.HTTP_401_UNAUTHORIZED)
+
+            user_id, hashed_password, role = user_data
+
+            if not check_password(password, hashed_password):
+                return Response({"message": "Invalid credentials."}, status=status.HTTP_401_UNAUTHORIZED)
+
+            # Create JWT token
+            payload = {
+                'user_id': user_id,
+                'email': email,
+                'exp': datetime.utcnow() + timedelta(hours=24)
+            }
+            token = jwt.encode(payload, settings.SECRET_KEY, algorithm='HS256')
+
+            return Response({
+                "message": "Login successful.",
+                "token": token,
+                "user_id": user_id,
+                "role": role
+            }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            print(e)
+            return Response({"message": "An error occurred during login."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+def logout_user(request: Request):
+    """Logout a user."""
+    if request.method == 'POST':
+        try:
+            # The client-side should handle removing the token from local storage
+            return Response({"message": "Logout successful."}, status=status.HTTP_200_OK)
+        except Exception as e:
+            print(e)
+            return Response({"message": "An error occurred during logout."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     return Response({"message": "Invalid request method"}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
