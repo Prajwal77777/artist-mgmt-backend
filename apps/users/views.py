@@ -108,7 +108,6 @@ def login_user(request: Request):
                         email]
                 )
                 user_data = cursor.fetchone()
-                print(user_data)
             if user_data is None:
                 return Response({"message": "Invalid credentials."}, status=status.HTTP_401_UNAUTHORIZED)
 
@@ -133,7 +132,6 @@ def login_user(request: Request):
             }, status=status.HTTP_200_OK)
 
         except Exception as e:
-            print(e)
             return Response({"message": "An error occurred during login."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
@@ -145,6 +143,29 @@ def logout_user(request: Request):
             # The client-side should handle removing the token from local storage
             return Response({"message": "Logout successful."}, status=status.HTTP_200_OK)
         except Exception as e:
-            print(e)
             return Response({"message": "An error occurred during logout."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    return Response({"message": "Invalid request method"}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+
+
+@api_view(['GET'])
+def get_current_user(request: Request):
+    """Get the currently logged-in user's data."""
+    if request.method == 'GET':
+        try:
+            user_id = request.user.id
+
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT * FROM users WHERE id = %s", [user_id])
+                columns = [col[0] for col in cursor.description]
+                user_data = cursor.fetchone()
+
+            if user_data:
+                user = dict(zip(columns, user_data))
+                return Response({"user": user}, status=status.HTTP_200_OK)
+            else:
+                return Response({"message": "User not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        except Exception as e:
+            return Response({"message": "An error occurred while fetching user data."},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     return Response({"message": "Invalid request method"}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
