@@ -3,13 +3,9 @@ from datetime import datetime, timedelta
 import jwt
 from django.conf import settings
 import json
-from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth.hashers import check_password, make_password
-from django.contrib.auth import authenticate, login, logout
 from django.utils import timezone
-from apps.core.models import User
 from django.db import connection
-from knox.models import AuthToken
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.request import Request
@@ -24,27 +20,23 @@ def user_register(request: Request):
     if request.method == 'POST':
         try:
             data = request.data
-            first_name = data.get("first_name")
-            last_name = data.get('last_name')
+            full_name = data.get("full_name")
             email = data.get('email')
             password = data.get('password')
-            phone = data.get('phone')
-            dob = data.get('dob')
-            gender = data.get('gender')
             role = data.get('role')
 
             hashed_password = make_password(password)
             if not email_validation(email):
                 return Response({'error': 'Invalid email address'}, status=status.HTTP_400_BAD_REQUEST)
 
-            if not all([first_name, last_name, email, phone, gender, role]):
+            if not all([full_name, email, password]):
                 return Response({'error': 'All fields are required'}, status=status.HTTP_400_BAD_REQUEST)
 
             with connection.cursor() as cursor:
                 cursor.execute(
-                    "INSERT INTO users (first_name, last_name, email, password, phone, dob, gender, role, created_at, updated_at) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
-                    [first_name, last_name, email, hashed_password, phone, dob,
-                        gender, role, timezone.now(), timezone.now()]
+                    "INSERT INTO users (full_name, email, password, role, created_at, updated_at) VALUES (%s, %s, %s, %s,%s, %s)",
+                    [full_name, email, hashed_password, role,
+                        timezone.now(), timezone.now()]
                 )
 
             return Response({'message': 'User registered successfully'}, status=status.HTTP_201_CREATED)
@@ -104,14 +96,14 @@ def login_user(request: Request):
         try:
             with connection.cursor() as cursor:
                 cursor.execute(
-                    "SELECT id, password, role FROM users WHERE email = %s", [
+                    "SELECT id, password FROM users WHERE email = %s", [
                         email]
                 )
                 user_data = cursor.fetchone()
             if user_data is None:
                 return Response({"message": "Invalid credentials."}, status=status.HTTP_401_UNAUTHORIZED)
 
-            user_id, hashed_password, role = user_data
+            user_id, hashed_password,  = user_data
 
             if not check_password(password, hashed_password):
                 return Response({"message": "Invalid credentials."}, status=status.HTTP_401_UNAUTHORIZED)
@@ -128,7 +120,6 @@ def login_user(request: Request):
                 "message": "Login successful.",
                 "token": token,
                 "user_id": user_id,
-                "role": role
             }, status=status.HTTP_200_OK)
 
         except Exception as e:
